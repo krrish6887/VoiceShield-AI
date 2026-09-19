@@ -1,0 +1,39 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment
+.env
+.env.*
+
+# Audio / datasets
+audio/*.wav
+backend/uploads/
+datasets/hf_real/
+datasets/hf_synthetic/
+datasets/real/
+datasets/synthetic/
+datasets/*.csv
+
+# Large model files
+models/*.pth
+models/*.pt
+models/*.bin
+models/*.safetensors
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Python cache
+backend/__pycache__/
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
