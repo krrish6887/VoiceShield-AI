@@ -27,6 +27,17 @@ function App() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
 
+  // ==========================================
+  // LIVE CALL STATE
+  // ==========================================
+
+  const [liveMode, setLiveMode] = useState(false);
+  const [liveAnalyzing, setLiveAnalyzing] = useState(false);
+  const [liveResult, setLiveResult] = useState(null);
+
+  const mediaRecorderRef = useRef(null);
+  const liveStreamRef = useRef(null);
+
   const [animatedScore, setAnimatedScore] = useState(0);
 
   useEffect(() => {
@@ -60,6 +71,188 @@ function App() {
     cancelAnimationFrame(animationFrame);
   };
 }, [result]);
+
+// ==========================================
+// START LIVE MICROPHONE
+// ==========================================
+
+const startLiveAnalysis = async () => {
+
+  try {
+
+    const stream =
+      await navigator.mediaDevices.getUserMedia({
+        audio: true
+      });
+
+    liveStreamRef.current = stream;
+
+    const mimeType =
+      MediaRecorder.isTypeSupported(
+        "audio/webm;codecs=opus"
+      )
+        ? "audio/webm;codecs=opus"
+        : "audio/webm";
+
+    const recorder = new MediaRecorder(
+      stream,
+      {
+        mimeType
+      }
+    );
+
+    mediaRecorderRef.current = recorder;
+
+    setLiveMode(true);
+    setLiveAnalyzing(true);
+    setLiveResult(null);
+
+
+    recorder.ondataavailable = async (event) => {
+
+      if (
+        event.data &&
+        event.data.size > 0
+      ) {
+
+        await analyzeLiveChunk(
+          event.data
+        );
+      }
+    };
+
+
+    recorder.onstop = () => {
+
+      if (liveStreamRef.current) {
+
+        liveStreamRef.current
+          .getTracks()
+          .forEach(
+            (track) => track.stop()
+          );
+      }
+
+      setLiveAnalyzing(false);
+    };
+
+
+    // Record in 8-second intervals
+    recorder.start(8000);
+
+  } catch (error) {
+
+    console.error(
+      "Microphone access error:",
+      error
+    );
+
+    alert(
+      "Unable to access microphone. Please allow microphone permission."
+    );
+  }
+};
+// ==========================================
+// SEND LIVE CHUNK TO BACKEND
+// ==========================================
+
+const analyzeLiveChunk = async (audioBlob) => {
+
+  try {
+
+    const formData = new FormData();
+
+    formData.append(
+      "file",
+      audioBlob,
+      "live_chunk.webm"
+    );
+
+    formData.append(
+      "transaction_sensitivity",
+      "HIGH"
+    );
+
+    formData.append(
+      "caller_verified",
+      "false"
+    );
+
+
+    const response = await fetch(
+      "http://127.0.0.1:8000/analyze-chunk",
+      {
+        method: "POST",
+        body: formData
+      }
+    );
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        `Live analysis failed: ${response.status}`
+      );
+    }
+
+
+    const data =
+      await response.json();
+
+
+    console.log(
+      "Live chunk result:",
+      data
+    );
+
+
+    if (data.error) {
+
+      console.error(
+        data.error
+      );
+
+      return;
+    }
+
+
+    setLiveResult(data);
+
+  } catch (error) {
+
+    console.error(
+      "Live chunk analysis error:",
+      error
+    );
+  }
+};
+
+// ==========================================
+// STOP LIVE MICROPHONE
+// ==========================================
+
+const stopLiveAnalysis = () => {
+
+  if (
+    mediaRecorderRef.current &&
+    mediaRecorderRef.current.state !== "inactive"
+  ) {
+
+    mediaRecorderRef.current.stop();
+  }
+
+  if (liveStreamRef.current) {
+
+    liveStreamRef.current
+      .getTracks()
+      .forEach(
+        (track) => track.stop()
+      );
+  }
+
+  setLiveMode(false);
+  setLiveAnalyzing(false);
+};
 
 
   // ==========================================
@@ -102,7 +295,32 @@ function App() {
 
     const formData = new FormData();
 
-    formData.append("file", selectedFile);
+formData.append("file", selectedFile);
+
+formData.append(
+  "transaction_sensitivity",
+  "HIGH"
+);
+
+formData.append(
+  "transaction_type",
+  "Fund Transfer"
+);
+
+formData.append(
+  "transaction_amount",
+  "250000"
+);
+
+formData.append(
+  "caller_verified",
+  "false"
+);
+
+formData.append(
+  "caller_name",
+  "Rahul Sharma"
+);
 
     setAnalysisProgress(25);
 
@@ -793,6 +1011,152 @@ transition={{
             RESULT
         ==================================== */}
 
+        {/* ==========================================
+              LIVE CALL ANALYSIS
+          ========================================== */}
+
+          <motion.div
+            className="live-call-card"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <div className="live-call-header">
+
+              <div>
+
+                <span className="section-eyebrow">
+                  REAL-TIME SECURITY
+                </span>
+
+                <h3>
+                  Live Call Analysis
+                </h3>
+
+                <p>
+                  Analyze microphone audio in real time
+                  for possible AI voice impersonation.
+                </p>
+
+              </div>
+
+              <span className="demo-badge">
+                LIVE
+              </span>
+
+            </div>
+
+
+            {!liveMode ? (
+
+              <button
+                className="live-start-btn"
+                onClick={startLiveAnalysis}
+              >
+                🎙 START LIVE ANALYSIS
+              </button>
+
+            ) : (
+
+              <button
+                className="live-stop-btn"
+                onClick={stopLiveAnalysis}
+              >
+                ■ STOP LIVE ANALYSIS
+              </button>
+
+            )}
+
+
+            {liveMode && (
+
+              <div className="live-status">
+
+                <div className="live-indicator">
+
+                  <span className="live-dot"></span>
+
+                  MICROPHONE ACTIVE
+
+                </div>
+
+
+                {!liveResult ? (
+
+                  <div className="live-waiting">
+                    Listening for voice...
+                  </div>
+
+                ) : (
+
+                  <div className="live-result">
+
+                    <div className="live-metric">
+
+                      <span>
+                        AI SCORE
+                      </span>
+
+                      <strong>
+                        {liveResult.chunk_score}%
+                      </strong>
+
+                    </div>
+
+
+                    <div className="live-metric">
+
+                      <span>
+                        VOICE STATUS
+                      </span>
+
+                      <strong>
+                        {liveResult.chunk_status}
+                      </strong>
+
+                    </div>
+
+
+                    <div className="live-metric">
+
+                      <span>
+                        RISK LEVEL
+                      </span>
+
+                      <strong
+                        className={
+                          liveResult.risk_level === "HIGH"
+                            ? "risk-high"
+                            : ""
+                        }
+                      >
+                        {liveResult.risk_level}
+                      </strong>
+
+                    </div>
+
+
+                    <div className="live-action">
+
+                      <span>
+                        RECOMMENDED ACTION
+                      </span>
+
+                      <strong>
+                        {liveResult.action}
+                      </strong>
+
+                    </div>
+
+                  </div>
+
+                )}
+
+              </div>
+
+            )}
+
+          </motion.div>
+
         <AnimatePresence>
 
           {result && (
@@ -1099,6 +1463,231 @@ transition={{
 
         </AnimatePresence>
 
+        {/* ==========================================
+            TRANSACTION SECURITY CONTEXT
+        ========================================== */}
+
+{result?.transaction_context && (
+  <motion.div
+    className="transaction-card"
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.5 }}
+  >
+    <div className="transaction-header">
+
+      <div>
+        <span className="section-eyebrow">
+          SECURITY CONTEXT
+        </span>
+
+        <h3>Transaction Context</h3>
+      </div>
+
+      <span className="demo-badge">
+        DEMO
+      </span>
+
+    </div>
+
+
+    <div className="transaction-grid">
+
+      <div className="transaction-item">
+        <span>Caller</span>
+
+        <strong>
+          {result.transaction_context.caller_name ||
+            "Unknown Caller"}
+        </strong>
+      </div>
+
+
+      <div className="transaction-item">
+        <span>Requested Action</span>
+
+        <strong>
+          {result.transaction_context.transaction_type ||
+            "None"}
+        </strong>
+      </div>
+
+
+      <div className="transaction-item">
+        <span>Amount</span>
+
+        <strong>
+          ₹
+          {Number(
+            result.transaction_context.transaction_amount || 0
+          ).toLocaleString("en-IN")}
+        </strong>
+      </div>
+
+
+      <div className="transaction-item">
+        <span>Sensitivity</span>
+
+        <strong
+          className={
+            result.transaction_context
+              .transaction_sensitivity === "HIGH"
+              ? "risk-high"
+              : ""
+          }
+        >
+          {result.transaction_context
+            .transaction_sensitivity || "LOW"}
+        </strong>
+      </div>
+
+
+      <div className="transaction-item">
+        <span>Caller Verification</span>
+
+        <strong
+          className={
+            result.transaction_context.caller_verified
+              ? "verification-good"
+              : "risk-high"
+          }
+        >
+          {result.transaction_context.caller_verified
+            ? "VERIFIED"
+            : "NOT VERIFIED"}
+        </strong>
+      </div>
+
+    </div>
+  </motion.div>
+)}
+        {/* ==========================================
+              SECURITY PREVENTION ENGINE
+          ========================================== */}
+
+        {result?.risk_level === "HIGH" && (
+          <motion.div
+            className="security-action-card"
+            initial={{
+              opacity: 0,
+              scale: 0.97
+            }}
+            animate={{
+              opacity: 1,
+              scale: 1
+            }}
+            transition={{
+              duration: 0.45
+            }}
+          >
+
+            <div className="security-alert-icon">
+              🚨
+            </div>
+
+
+            <div className="security-action-content">
+
+              <span className="section-eyebrow">
+                SECURITY RESPONSE
+              </span>
+
+              <h3>
+                Possible Voice Impersonation
+              </h3>
+
+              <p>
+                Voice authenticity signals and transaction
+                context indicate a high-risk interaction.
+              </p>
+
+
+              {/* Risk summary */}
+
+              <div className="security-risk-summary">
+
+                <div>
+                  <span>RISK SCORE</span>
+
+                  <strong>
+                    {result.risk_score}
+                  </strong>
+                </div>
+
+
+                <div>
+                  <span>RISK LEVEL</span>
+
+                  <strong className="risk-high">
+                    {result.risk_level}
+                  </strong>
+                </div>
+
+
+                <div>
+                  <span>RECOMMENDED ACTION</span>
+
+                  <strong>
+                    {result.recommended_action
+                      ?.replaceAll("_", " ")}
+                  </strong>
+                </div>
+
+              </div>
+
+
+              {/* Security actions */}
+
+              <div className="security-actions">
+
+                <button
+                  className="security-btn danger"
+                  onClick={() =>
+                    alert(
+                      "Transaction placed on security hold."
+                    )
+                  }
+                >
+                  HOLD TRANSACTION
+                </button>
+
+
+                <button
+                  className="security-btn"
+                  onClick={() =>
+                    alert(
+                      "Independent caller verification requested."
+                    )
+                  }
+                >
+                  VERIFY CALLER
+                </button>
+
+
+                <button
+                  className="security-btn"
+                  onClick={() =>
+                    alert(
+                      "MFA verification initiated."
+                    )
+                  }
+                >
+                  REQUEST MFA
+                </button>
+
+              </div>
+
+
+              <div className="security-note">
+                Prototype action layer — connected to the
+                VoiceShield-AI risk engine.
+              </div>
+
+            </div>
+
+          </motion.div>
+        )}
+
 
         {/* ====================================
             FEATURES
@@ -1191,7 +1780,6 @@ transition={{
           </motion.section>
 
         )}
-
 
         {/* ====================================
             FOOTER
