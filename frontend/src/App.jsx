@@ -2,331 +2,154 @@ import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ShieldCheck,
-  Mic2,
+  Mic,
+  MicOff,
   Upload,
+  ArrowRight,
   Activity,
-  LockKeyhole,
-  AudioWaveform,
-  ScanSearch,
+  Lock,
+  Fingerprint,
+  ShieldAlert,
   CheckCircle2,
   AlertTriangle,
   XCircle,
-  LoaderCircle,
-  RotateCcw,
-  FileAudio,
+  Sparkles,
+  Radio,
+  ScanLine,
+  Clock3,
+  CircleDollarSign,
+  UserCheck,
+  KeyRound,
+  Ban,
 } from "lucide-react";
 
 import "./App.css";
 
-function App() {
-  const fileInputRef = useRef(null);
+const API_URL = "http://127.0.0.1:8000";
 
+function App() {
+  // -----------------------------
+  // FILE ANALYSIS
+  // -----------------------------
   const [selectedFile, setSelectedFile] = useState(null);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [analysisProgress, setAnalysisProgress] = useState(0);
-  const [result, setResult] = useState(null);
+  const [analysis, setAnalysis] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // ==========================================
-  // LIVE CALL STATE
-  // ==========================================
+  // -----------------------------
+  // TRANSACTION CONTEXT
+  // -----------------------------
+  const [callerName, setCallerName] = useState("Rahul Sharma");
+  const [transactionType, setTransactionType] =
+    useState("Fund Transfer");
+  const [transactionAmount, setTransactionAmount] =
+    useState("250000");
+  const [transactionSensitivity, setTransactionSensitivity] =
+    useState("HIGH");
+  const [callerVerified, setCallerVerified] =
+    useState(false);
 
+  // -----------------------------
+  // LIVE ANALYSIS
+  // -----------------------------
   const [liveMode, setLiveMode] = useState(false);
   const [liveAnalyzing, setLiveAnalyzing] = useState(false);
   const [liveResult, setLiveResult] = useState(null);
+  const [liveChunks, setLiveChunks] = useState([]);
 
   const mediaRecorderRef = useRef(null);
   const liveStreamRef = useRef(null);
+  const liveTimerRef = useRef(null);
+  const liveActiveRef = useRef(false);
 
-  const [animatedScore, setAnimatedScore] = useState(0);
+  // -----------------------------
+  // AUDIT EVENTS
+  // -----------------------------
+  const [auditEvents, setAuditEvents] = useState([]);
 
-  useEffect(() => {
-  if (!result) {
-    setAnimatedScore(0);
-    return;
-  }
-
-  const target = Number(result.ai_score) || 0;
-  const duration = 1200;
-  const startTime = performance.now();
-
-  let animationFrame;
-
-  const animate = (currentTime) => {
-    const elapsed = currentTime - startTime;
-    const progress = Math.min(elapsed / duration, 1);
-
-    const easedProgress = 1 - Math.pow(1 - progress, 3);
-
-    setAnimatedScore(target * easedProgress);
-
-    if (progress < 1) {
-      animationFrame = requestAnimationFrame(animate);
-    }
-  };
-
-  animationFrame = requestAnimationFrame(animate);
-
-  return () => {
-    cancelAnimationFrame(animationFrame);
-  };
-}, [result]);
-
-// ==========================================
-// START LIVE MICROPHONE
-// ==========================================
-
-const startLiveAnalysis = async () => {
-
-  try {
-
-    const stream =
-      await navigator.mediaDevices.getUserMedia({
-        audio: true
-      });
-
-    liveStreamRef.current = stream;
-
-    const mimeType =
-      MediaRecorder.isTypeSupported(
-        "audio/webm;codecs=opus"
-      )
-        ? "audio/webm;codecs=opus"
-        : "audio/webm";
-
-    const recorder = new MediaRecorder(
-      stream,
+  const addAuditEvent = (title, description, type = "normal") => {
+    setAuditEvents((previous) => [
+      ...previous,
       {
-        mimeType
+        id: Date.now() + Math.random(),
+        time: new Date().toLocaleTimeString(),
+        title,
+        description,
+        type,
+      },
+    ]);
+  };
+
+  // -----------------------------
+  // CLEANUP
+  // -----------------------------
+  useEffect(() => {
+    return () => {
+      liveActiveRef.current = false;
+
+      if (liveTimerRef.current) {
+        clearTimeout(liveTimerRef.current);
       }
-    );
 
-    mediaRecorderRef.current = recorder;
-
-    setLiveMode(true);
-    setLiveAnalyzing(true);
-    setLiveResult(null);
-
-
-    recorder.ondataavailable = async (event) => {
-
-      if (
-        event.data &&
-        event.data.size > 0
-      ) {
-
-        await analyzeLiveChunk(
-          event.data
-        );
+      if (mediaRecorderRef.current?.state === "recording") {
+        mediaRecorderRef.current.stop();
       }
-    };
-
-
-    recorder.onstop = () => {
 
       if (liveStreamRef.current) {
-
         liveStreamRef.current
           .getTracks()
-          .forEach(
-            (track) => track.stop()
-          );
+          .forEach((track) => track.stop());
       }
-
-      setLiveAnalyzing(false);
     };
+  }, []);
 
+  // ============================================================
+  // NORMAL AUDIO ANALYSIS
+  // ============================================================
 
-    // Record in 8-second intervals
-    recorder.start(8000);
-
-  } catch (error) {
-
-    console.error(
-      "Microphone access error:",
-      error
-    );
-
-    alert(
-      "Unable to access microphone. Please allow microphone permission."
-    );
-  }
-};
-// ==========================================
-// SEND LIVE CHUNK TO BACKEND
-// ==========================================
-
-const analyzeLiveChunk = async (audioBlob) => {
-
-  try {
-
-    const formData = new FormData();
-
-    formData.append(
-      "file",
-      audioBlob,
-      "live_chunk.webm"
-    );
-
-    formData.append(
-      "transaction_sensitivity",
-      "HIGH"
-    );
-
-    formData.append(
-      "caller_verified",
-      "false"
-    );
-
-
-    const response = await fetch(
-      "http://127.0.0.1:8000/analyze-chunk",
-      {
-        method: "POST",
-        body: formData
-      }
-    );
-
-
-    if (!response.ok) {
-
-      throw new Error(
-        `Live analysis failed: ${response.status}`
-      );
-    }
-
-
-    const data =
-      await response.json();
-
-
-    console.log(
-      "Live chunk result:",
-      data
-    );
-
-
-    if (data.error) {
-
-      console.error(
-        data.error
-      );
-
-      return;
-    }
-
-
-    setLiveResult(data);
-
-  } catch (error) {
-
-    console.error(
-      "Live chunk analysis error:",
-      error
-    );
-  }
-};
-
-// ==========================================
-// STOP LIVE MICROPHONE
-// ==========================================
-
-const stopLiveAnalysis = () => {
-
-  if (
-    mediaRecorderRef.current &&
-    mediaRecorderRef.current.state !== "inactive"
-  ) {
-
-    mediaRecorderRef.current.stop();
-  }
-
-  if (liveStreamRef.current) {
-
-    liveStreamRef.current
-      .getTracks()
-      .forEach(
-        (track) => track.stop()
-      );
-  }
-
-  setLiveMode(false);
-  setLiveAnalyzing(false);
-};
-
-
-  // ==========================================
-  // File Selection
-  // ==========================================
-
-  function handleFileChange(event) {
-    const file = event.target.files?.[0];
-
-    if (!file) {
-      return;
-    }
-
-    setSelectedFile(file);
-    setResult(null);
-    setError("");
-  }
-
-  // ==========================================
-  // Open File Picker
-  // ==========================================
-
-  function selectAudio() {
-    fileInputRef.current?.click();
-  }
-
-  // ==========================================
-  // Analyze Audio
-  // ==========================================
-
-  async function analyzeAudio() {
+  const analyzeAudio = async () => {
     if (!selectedFile) {
+      setError("Please select an audio file first.");
       return;
     }
-
-    setAnalyzing(true);
-    setAnalysisProgress(10);
-    setResult(null);
-    setError("");
-
-    const formData = new FormData();
-
-formData.append("file", selectedFile);
-
-formData.append(
-  "transaction_sensitivity",
-  "HIGH"
-);
-
-formData.append(
-  "transaction_type",
-  "Fund Transfer"
-);
-
-formData.append(
-  "transaction_amount",
-  "250000"
-);
-
-formData.append(
-  "caller_verified",
-  "false"
-);
-
-formData.append(
-  "caller_name",
-  "Rahul Sharma"
-);
-
-    setAnalysisProgress(25);
 
     try {
+      setLoading(true);
+      setError("");
+      setAnalysis(null);
+
+      addAuditEvent(
+        "VOICE ANALYSIS STARTED",
+        `Analyzing ${selectedFile.name}`,
+        "normal"
+      );
+
+      const formData = new FormData();
+
+      formData.append("file", selectedFile);
+      formData.append(
+        "transaction_sensitivity",
+        transactionSensitivity
+      );
+      formData.append(
+        "transaction_type",
+        transactionType
+      );
+      formData.append(
+        "transaction_amount",
+        transactionAmount
+      );
+      formData.append(
+        "caller_verified",
+        String(callerVerified)
+      );
+      formData.append(
+        "caller_name",
+        callerName
+      );
+
       const response = await fetch(
-        "http://127.0.0.1:8000/analyze",
+        `${API_URL}/analyze`,
         {
           method: "POST",
           body: formData,
@@ -335,1471 +158,1487 @@ formData.append(
 
       if (!response.ok) {
         throw new Error(
-          `Server returned HTTP ${response.status}`
+          `Analysis failed: HTTP ${response.status}`
         );
       }
 
       const data = await response.json();
 
+      setAnalysis(data);
+
+      addAuditEvent(
+        "VOICE ANALYSIS COMPLETE",
+        `${data.ai_score}% AI likelihood detected`,
+        data.risk_level === "HIGH"
+          ? "danger"
+          : data.risk_level === "MEDIUM"
+          ? "warning"
+          : "success"
+      );
+
+      if (data.risk_level === "HIGH") {
+        addAuditEvent(
+          "HIGH SECURITY RISK DETECTED",
+          data.recommended_action,
+          "danger"
+        );
+
+        addAuditEvent(
+          "TRANSACTION PROTECTION ACTIVATED",
+          "Verification required before authorization",
+          "danger"
+        );
+      }
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Audio analysis failed.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ============================================================
+  // LIVE MICROPHONE
+  // ============================================================
+
+  const analyzeLiveChunk = async (audioBlob) => {
+    try {
+      console.log(
+        "🚀 Sending live chunk to backend...",
+        audioBlob.size,
+        "bytes"
+      );
+
+      const formData = new FormData();
+
+      formData.append(
+        "file",
+        audioBlob,
+        "live_chunk.webm"
+      );
+
+      formData.append(
+        "transaction_sensitivity",
+        transactionSensitivity
+      );
+
+      formData.append(
+        "caller_verified",
+        String(callerVerified)
+      );
+
+      const response = await fetch(
+        `${API_URL}/analyze-chunk`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      console.log(
+        "📥 Backend response:",
+        response.status
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `Live analysis failed: HTTP ${response.status}`
+        );
+      }
+
+      const data = await response.json();
+
+      console.log("✅ LIVE RESULT:", data);
+
       if (data.error) {
         throw new Error(data.error);
       }
 
-      setAnalysisProgress(90);
+      setLiveResult(data);
 
-      setResult(data);
+      setLiveChunks((previousChunks) => [
+        ...previousChunks,
+        {
+          ...data,
+          chunk_number:
+            previousChunks.length + 1,
+          timestamp:
+            new Date().toLocaleTimeString(),
+        },
+      ].slice(-12));
 
-      setAnalysisProgress(100);
+      addAuditEvent(
+        `LIVE CHUNK ${
+          liveChunks.length + 1
+        } ANALYZED`,
+        `AI likelihood: ${data.chunk_score}%`,
+        data.risk_level === "HIGH"
+          ? "danger"
+          : data.risk_level === "MEDIUM"
+          ? "warning"
+          : "success"
+      );
+
+      if (data.risk_level === "HIGH") {
+        addAuditEvent(
+          "HIGH-RISK VOICE PATTERN",
+          "Protection response recommended",
+          "danger"
+        );
+      }
+
+      return data;
+    } catch (err) {
+      console.error(
+        "❌ Live chunk analysis error:",
+        err
+      );
+
+      setError(
+        `Live analysis error: ${err.message}`
+      );
+
+      return null;
+    }
+  };
+
+  const startLiveAnalysis = async () => {
+    try {
+      setError("");
+
+      console.log(
+        "🎙 Starting live microphone..."
+      );
+
+      const stream =
+        await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+
+      console.log(
+        "✅ Microphone permission granted"
+      );
+
+      liveStreamRef.current = stream;
+      liveActiveRef.current = true;
+
+      const mimeType =
+        MediaRecorder.isTypeSupported(
+          "audio/webm;codecs=opus"
+        )
+          ? "audio/webm;codecs=opus"
+          : "audio/webm";
+
+      setLiveMode(true);
+      setLiveAnalyzing(true);
+      setLiveResult(null);
+      setLiveChunks([]);
+
+      addAuditEvent(
+        "CALL RECEIVED",
+        "Microphone stream initialized",
+        "normal"
+      );
+
+      addAuditEvent(
+        "REAL-TIME MONITORING ACTIVE",
+        "Voice authenticity monitoring started",
+        "normal"
+      );
+
+      const recordNextChunk = () => {
+        if (!liveActiveRef.current) {
+          return;
+        }
+
+        console.log(
+          "🔴 Starting new 8-second recording..."
+        );
+
+        const recorder = new MediaRecorder(
+          stream,
+          {
+            mimeType,
+          }
+        );
+
+        mediaRecorderRef.current = recorder;
+
+        const audioChunks = [];
+
+        recorder.ondataavailable = (event) => {
+          if (
+            event.data &&
+            event.data.size > 0
+          ) {
+            audioChunks.push(event.data);
+          }
+        };
+
+        recorder.onstop = async () => {
+          console.log(
+            "🛑 8-second recording stopped"
+          );
+
+          if (!audioChunks.length) {
+            console.warn(
+              "⚠️ No audio data received"
+            );
+            return;
+          }
+
+          const audioBlob = new Blob(
+            audioChunks,
+            {
+              type: mimeType,
+            }
+          );
+
+          console.log(
+            "🎧 Complete audio chunk created:",
+            audioBlob.size,
+            "bytes"
+          );
+
+          await analyzeLiveChunk(audioBlob);
+
+          if (liveActiveRef.current) {
+            setTimeout(() => {
+              recordNextChunk();
+            }, 200);
+          }
+        };
+
+        recorder.onerror = (event) => {
+          console.error(
+            "❌ MediaRecorder error:",
+            event
+          );
+        };
+
+        recorder.start();
+
+        liveTimerRef.current =
+          setTimeout(() => {
+            if (
+              recorder.state === "recording" &&
+              liveActiveRef.current
+            ) {
+              recorder.stop();
+            }
+          }, 8000);
+      };
+
+      recordNextChunk();
     } catch (err) {
       console.error(err);
 
       setError(
-        "Unable to analyze the audio. Make sure the VoiceShield-AI backend is running."
+        "Unable to access microphone. Please allow microphone permission."
       );
-    } finally {
-      setAnalyzing(false);
+
+      setLiveMode(false);
+      setLiveAnalyzing(false);
     }
-  }
+  };
 
-  // ==========================================
-  // Reset
-  // ==========================================
+  const stopLiveAnalysis = () => {
+    console.log(
+      "🛑 Stopping live analysis..."
+    );
 
-  function resetAnalysis() {
-    setSelectedFile(null);
-    setResult(null);
-    setError("");
+    liveActiveRef.current = false;
 
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  }
-
-  // ==========================================
-  // Result Icon
-  // ==========================================
-
-  function getResultIcon() {
-    if (!result) {
-      return null;
+    if (liveTimerRef.current) {
+      clearTimeout(liveTimerRef.current);
+      liveTimerRef.current = null;
     }
 
-    if (result.prediction === "AI-GENERATED") {
-      return <AlertTriangle size={28} />;
+    const recorder =
+      mediaRecorderRef.current;
+
+    if (
+      recorder &&
+      recorder.state === "recording"
+    ) {
+      recorder.stop();
     }
 
-    if (result.prediction === "SUSPICIOUS") {
-      return <AlertTriangle size={28} />;
+    if (liveStreamRef.current) {
+      liveStreamRef.current
+        .getTracks()
+        .forEach((track) => track.stop());
+
+      liveStreamRef.current = null;
     }
 
-    return <CheckCircle2 size={28} />;
-  }
+    mediaRecorderRef.current = null;
+
+    setLiveMode(false);
+    setLiveAnalyzing(false);
+
+    addAuditEvent(
+      "LIVE MONITORING STOPPED",
+      "Voice stream closed",
+      "normal"
+    );
+  };
+
+  // ============================================================
+  // UI HELPERS
+  // ============================================================
+
+  const currentResult =
+    liveResult || analysis;
+
+  const score =
+    currentResult?.chunk_score ??
+    currentResult?.ai_score ??
+    0;
+
+  const riskLevel =
+    currentResult?.risk_level ||
+    "LOW";
+
+  const isHighRisk =
+    riskLevel === "HIGH";
+
+  const isMediumRisk =
+    riskLevel === "MEDIUM";
+
+  const status =
+    currentResult?.chunk_status ||
+    currentResult?.prediction ||
+    "WAITING";
+
+  const riskClass = isHighRisk
+    ? "danger"
+    : isMediumRisk
+    ? "warning"
+    : "success";
 
   return (
-    <div className="app">
+    <div className="kwach-app">
 
-      {/* Background effects */}
+      {/* ===================================================== */}
+      {/* NAVBAR */}
+      {/* ===================================================== */}
 
-      <div className="bg-glow glow-one"></div>
-      <div className="bg-glow glow-two"></div>
-
-
-      {/* ======================================
-          NAVBAR
-      ====================================== */}
-
-      <motion.nav
-        className="navbar"
-        initial={{
-          opacity: 0,
-          y: -20,
-        }}
-        animate={{
-          opacity: 1,
-          y: 0,
-        }}
-        transition={{
-          duration: 0.6,
-        }}
-      >
+      <nav className="kwach-nav">
 
         <div className="brand">
-
-          <div className="brand-icon">
-            <ShieldCheck size={22} />
+          <div className="brand-mark">
+            <ShieldCheck size={20} />
           </div>
 
-          <div>
-
-            <div className="brand-name">
-              VoiceShield<span>-AI</span>
-            </div>
-
-            <div className="brand-subtitle">
-              VOICE AUTHENTICITY INTELLIGENCE
-            </div>
-
-          </div>
-
+          <span>KWACH</span>
         </div>
 
+        <div className="nav-links">
+          <a href="#product">
+            Product
+          </a>
 
-        <div className="system-status">
+          <a href="#detection">
+            Detection
+          </a>
 
-          <span className="status-dot"></span>
+          <a href="#protection">
+            Protection
+          </a>
 
-          SYSTEM ONLINE
-
+          <a href="#technology">
+            Technology
+          </a>
         </div>
 
-      </motion.nav>
-
-
-      {/* ======================================
-          MAIN
-      ====================================== */}
-
-      <main className="main">
-
-
-        {/* ====================================
-            HERO
-        ==================================== */}
-
-        <motion.section
-          className="hero"
-          initial={{
-            opacity: 0,
-            y: 25,
-          }}
-          animate={{
-            opacity: 1,
-            y: 0,
-          }}
-          transition={{
-            duration: 0.7,
-          }}
-        >
-
-          <div className="eyebrow">
-
-            <ScanSearch size={16} />
-
-            AI-POWERED AUDIO FORENSICS
-
-          </div>
-
-
-          <h1>
-            Detect the voice.
-            <br />
-            <span>
-              Protect the conversation.
-            </span>
-          </h1>
-
-
-          <p>
-            VoiceShield-AI analyzes speech patterns using
-            deep-learning models to identify synthetic and
-            AI-generated voices.
-          </p>
-
-        </motion.section>
-
-
-        {/* ====================================
-            ANALYSIS CARD
-        ==================================== */}
-
-        <motion.section
-          className="upload-card"
-          initial={{
-            opacity: 0,
-            scale: 0.97,
-          }}
-          animate={{
-            opacity: 1,
-            scale: 1,
-          }}
-          transition={{
-            duration: 0.7,
-            delay: 0.15,
-          }}
-        >
-
-          <div className="card-header">
-
-            <div>
-
-              <div className="card-label">
-                AUDIO ANALYSIS
-              </div>
-
-              <h2>
-                Verify a voice recording
-              </h2>
-
-            </div>
-
-
-            <div className="secure-badge">
-
-              <LockKeyhole size={15} />
-
-              PRIVATE ANALYSIS
-
-            </div>
-
-          </div>
-
-
-          {/* ==================================
-              FILE INPUT
-          ================================== */}
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="audio/*"
-            onChange={handleFileChange}
-            style={{ display: "none" }}
-          />
-
-
-          {/* ==================================
-              UPLOAD AREA
-          ================================== */}
-
-          <motion.div
-            className="upload-zone"
-            whileHover={{
-              scale: 1.005,
-            }}
-          >
-
-            <motion.div
-              className="mic-circle"
-              animate={
-                analyzing
-                  ? {
-                      scale: [1, 1.08, 1],
-                      rotate: [0, 5, -5, 0],
-                    }
-                  : {
-                      scale: [1, 1.04, 1],
-                    }
-              }
-              transition={{
-                duration: analyzing ? 1 : 2.2,
-                repeat: Infinity,
-              }}
-            >
-
-              {analyzing ? (
-                <LoaderCircle
-                  size={30}
-                  className="spin"
-                />
-              ) : selectedFile ? (
-                <FileAudio size={30} />
-              ) : (
-                <Mic2 size={30} />
-              )}
-
-            </motion.div>
-
-
-            <AnimatePresence mode="wait">
-
-              {analyzing ? (
-
-                <motion.div
-  key="analyzing"
-  className="analysis-panel"
-
-  initial={{
-    opacity: 0,
-    scale: 0.96,
-    y: 15,
-  }}
-
-  animate={{
-    opacity: 1,
-    scale: 1,
-    y: 0,
-  }}
-
-  exit={{
-    opacity: 0,
-    scale: 0.96,
-  }}
-
-  transition={{
-    duration: 0.45,
-  }}
->
-
-  {/* ANALYSIS ICON */}
-
-  <motion.div
-    className="analysis-orb"
-
-    animate={{
-      scale: [1, 1.08, 1],
-      boxShadow: [
-        "0 0 20px rgba(34,211,238,0.15)",
-        "0 0 45px rgba(34,211,238,0.35)",
-        "0 0 20px rgba(34,211,238,0.15)",
-      ],
-    }}
-
-    transition={{
-      duration: 2,
-      repeat: Infinity,
-      ease: "easeInOut",
-    }}
-  >
-
-    <LoaderCircle
-      size={34}
-      className="analysis-spinner"
-    />
-
-  </motion.div>
-
-
-  {/* TITLE */}
-
-  <div className="analysis-content">
-
-    <div className="analysis-label">
-      AI FORENSIC ANALYSIS
-    </div>
-
-    <h3>
-      Analyzing voice...
-    </h3>
-
-    <p>
-      Running Wav2Vec2 deep-learning detection
-    </p>
-
-
-    {/* WAVEFORM */}
-
-    <div className="analysis-waveform">
-
-      {[...Array(28)].map((_, index) => (
-
-        <motion.span
-          key={index}
-
-         animate={{
-  height: [
-    `${8 + (index % 5) * 4}px`,
-    `${22 + (index % 4) * 5}px`,
-    `${10 + (index % 3) * 4}px`,
-  ],
-}}
-
-transition={{
-  duration: 0.8 + (index % 4) * 0.12,
-  repeat: Infinity,
-  delay: index * 0.035,
-}}
-        />
-
-      ))}
-
-    </div>
-
-
-    {/* PROGRESS */}
-
-    <div className="analysis-progress-header">
-
-      <span>
-        Processing audio signal
-      </span>
-
-      <span>
-        {analysisProgress}%
-      </span>
-
-    </div>
-
-
-    <div className="analysis-progress-track">
-
-      <motion.div
-        className="analysis-progress-bar"
-
-        animate={{
-          width: `${analysisProgress}%`,
-        }}
-
-        transition={{
-          duration: 0.5,
-          ease: "easeOut",
-        }}
-      />
-
-    </div>
-
-
-    {/* STATUS */}
-
-    <div className="analysis-status">
-
-      <motion.span
-        animate={{
-          opacity: [0.4, 1, 0.4],
-        }}
-
-        transition={{
-          duration: 1.2,
-          repeat: Infinity,
-        }}
-      />
-
-      Secure local analysis in progress
-
-    </div>
-
-  </div>
-
-</motion.div>
-
-              ) : selectedFile ? (
-
-                <motion.div
-                  key="selected"
-                  initial={{
-                    opacity: 0,
-                    y: 10,
-                  }}
-                  animate={{
-                    opacity: 1,
-                    y: 0,
-                  }}
-                >
-
-                  <h3>
-                    {selectedFile.name}
-                  </h3>
-
-                  <p>
-                    {(selectedFile.size / 1024 / 1024).toFixed(2)}
-                    {" MB"} • Ready for analysis
-                  </p>
-
-                </motion.div>
-
-              ) : (
-
-                <motion.div
-                  key="empty"
-                  initial={{
-                    opacity: 0,
-                  }}
-                  animate={{
-                    opacity: 1,
-                  }}
-                >
-
-                  <h3>
-                    Drop an audio recording here
-                  </h3>
-
-                  <p>
-                    or browse files from your device
-                  </p>
-
-                </motion.div>
-
-              )}
-
-            </AnimatePresence>
-
-
-            {!analyzing && !selectedFile && (
-
-              <button
-                className="upload-button"
-                onClick={selectAudio}
-              >
-
-                <Upload size={18} />
-
-                Select Audio
-
-              </button>
-
-            )}
-
-
-            {selectedFile && !analyzing && !result && (
-
-              <button
-                className="upload-button"
-                onClick={analyzeAudio}
-              >
-
-                <ScanSearch size={18} />
-
-                Analyze Voice
-
-              </button>
-
-            )}
-
-
-            {selectedFile && !analyzing && (
-
-              <button
-                className="secondary-button"
-                onClick={selectAudio}
-              >
-
-                Choose Different File
-
-              </button>
-
-            )}
-
-
-            <div className="supported">
-              WAV • MP3 • M4A • FLAC
-            </div>
-
-          </motion.div>
-
-
-          {/* ==================================
-              ERROR
-          ================================== */}
-
-          <AnimatePresence>
-
-            {error && (
-
-              <motion.div
-                className="error-message"
-                initial={{
-                  opacity: 0,
-                  y: 10,
-                }}
-                animate={{
-                  opacity: 1,
-                  y: 0,
-                }}
-                exit={{
-                  opacity: 0,
-                }}
-              >
-
-                <XCircle size={18} />
-
-                {error}
-
-              </motion.div>
-
-            )}
-
-          </AnimatePresence>
-
-
-          {/* ==================================
-              PIPELINE
-          ================================== */}
-
-          <div className="pipeline">
-
-            <div
-              className={`pipeline-item ${
-                selectedFile ? "active" : ""
-              }`}
-            >
-
-              <div className="pipeline-icon">
-
-                <AudioWaveform size={18} />
-
-              </div>
-
-              <div>
-
-                <strong>
-                  Audio Input
-                </strong>
-
-                <span>
-                  {selectedFile ? "Loaded" : "Ready"}
-                </span>
-
-              </div>
-
-            </div>
-
-
-            <div className="pipeline-line"></div>
-
-
-            <div
-              className={`pipeline-item ${
-                analyzing ? "active analyzing" : ""
-              }`}
-            >
-
-              <div className="pipeline-icon">
-
-                <Activity size={18} />
-
-              </div>
-
-              <div>
-
-                <strong>
-                  Voice Analysis
-                </strong>
-
-                <span>
-                  Wav2Vec2
-                </span>
-
-              </div>
-
-            </div>
-
-
-            <div className="pipeline-line"></div>
-
-
-            <div
-              className={`pipeline-item ${
-                result ? "active" : ""
-              }`}
-            >
-
-              <div className="pipeline-icon">
-
-                <ShieldCheck size={18} />
-
-              </div>
-
-              <div>
-
-                <strong>
-                  Authenticity
-                </strong>
-
-                <span>
-                  {result ? "Complete" : "AI Detection"}
-                </span>
-
-              </div>
-
-            </div>
-
-          </div>
-
-        </motion.section>
-
-
-        {/* ====================================
-            RESULT
-        ==================================== */}
-
-        {/* ==========================================
-              LIVE CALL ANALYSIS
-          ========================================== */}
-
-          <motion.div
-            className="live-call-card"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
-            <div className="live-call-header">
-
-              <div>
-
-                <span className="section-eyebrow">
-                  REAL-TIME SECURITY
-                </span>
-
-                <h3>
-                  Live Call Analysis
-                </h3>
-
-                <p>
-                  Analyze microphone audio in real time
-                  for possible AI voice impersonation.
-                </p>
-
-              </div>
-
-              <span className="demo-badge">
-                LIVE
-              </span>
-
-            </div>
-
-
-            {!liveMode ? (
-
-              <button
-                className="live-start-btn"
-                onClick={startLiveAnalysis}
-              >
-                🎙 START LIVE ANALYSIS
-              </button>
-
-            ) : (
-
-              <button
-                className="live-stop-btn"
-                onClick={stopLiveAnalysis}
-              >
-                ■ STOP LIVE ANALYSIS
-              </button>
-
-            )}
-
-
-            {liveMode && (
-
-              <div className="live-status">
-
-                <div className="live-indicator">
-
-                  <span className="live-dot"></span>
-
-                  MICROPHONE ACTIVE
-
-                </div>
-
-
-                {!liveResult ? (
-
-                  <div className="live-waiting">
-                    Listening for voice...
-                  </div>
-
-                ) : (
-
-                  <div className="live-result">
-
-                    <div className="live-metric">
-
-                      <span>
-                        AI SCORE
-                      </span>
-
-                      <strong>
-                        {liveResult.chunk_score}%
-                      </strong>
-
-                    </div>
-
-
-                    <div className="live-metric">
-
-                      <span>
-                        VOICE STATUS
-                      </span>
-
-                      <strong>
-                        {liveResult.chunk_status}
-                      </strong>
-
-                    </div>
-
-
-                    <div className="live-metric">
-
-                      <span>
-                        RISK LEVEL
-                      </span>
-
-                      <strong
-                        className={
-                          liveResult.risk_level === "HIGH"
-                            ? "risk-high"
-                            : ""
-                        }
-                      >
-                        {liveResult.risk_level}
-                      </strong>
-
-                    </div>
-
-
-                    <div className="live-action">
-
-                      <span>
-                        RECOMMENDED ACTION
-                      </span>
-
-                      <strong>
-                        {liveResult.action}
-                      </strong>
-
-                    </div>
-
-                  </div>
-
-                )}
-
-              </div>
-
-            )}
-
-          </motion.div>
-
-        <AnimatePresence>
-
-          {result && (
-
-            <motion.section
-              className="result-card"
-              initial={{
-                opacity: 0,
-                y: 35,
-                scale: 0.97,
-              }}
-              animate={{
-                opacity: 1,
-                y: 0,
-                scale: 1,
-              }}
-              transition={{
-                duration: 0.6,
-              }}
-            >
-
-              <div className="result-header">
-
-                <div>
-
-                  <div className="card-label">
-                    ANALYSIS COMPLETE
-                  </div>
-
-                  <h2>
-                    Voice authenticity report
-                  </h2>
-
-                </div>
-
-                <div className="result-file">
-                  {result.filename}
-                </div>
-
-              </div>
-
-
-              <div className="result-main">
-
-                <div
-  className="score-ring"
-  style={{
-    "--score-angle": `${result.ai_score * 3.6}deg`,
-  }}
->
-
-                  <div className="score-ring-inner">
-
-                    <motion.div
-                      className="score-number"
-                      initial={{
-                        opacity: 0,
-                        scale: 0.5,
-                      }}
-                      animate={{
-                        opacity: 1,
-                        scale: 1,
-                      }}
-                      transition={{
-                        duration: 0.7,
-                        delay: 0.2,
-                      }}
-                    >
-                      {animatedScore.toFixed(2)}%
-                    </motion.div>
-
-                    <div className="score-caption">
-                      AI SCORE
-                    </div>
-
-                  </div>
-
-                </div>
-
-
-                <div className="result-status">
-
-                  <div
-                    className={`result-icon ${
-                      result.prediction === "REAL"
-                        ? "real"
-                        : "danger"
-                    }`}
-                  >
-                    {getResultIcon()}
-                  </div>
-
-
-                  <div>
-
-                    <div className="result-prediction">
-                      {result.prediction}
-                    </div>
-
-                    <div className="result-risk">
-                      Risk Level: {result.risk_level}
-                    </div>
-
-                  </div>
-
-                </div>
-
-              </div>
-              
-              {/* ==================================
-                  FORENSIC TIMELINE
-              ================================== */}
-
-              <div className="forensic-section">
-
-                <div className="forensic-header">
-
-                  <div>
-                    <div className="forensic-label">
-                      VOICE FORENSIC TIMELINE
-                    </div>
-
-                    <h3>
-                      Chunk-level detection
-                    </h3>
-                  </div>
-
-                  <div className="forensic-count">
-                    {result.fake_chunks}/{result.total_chunks} AI
-                  </div>
-
-                </div>
-
-
-                <div className="chunk-list">
-
-                  {result.chunk_scores?.map((score, index) => {
-  const isAI = score >= 50;
-
-  return (
-    <motion.div
-      className="chunk-row"
-      key={index}
-      initial={{
-        opacity: 0,
-        x: -20,
-      }}
-      animate={{
-        opacity: 1,
-        x: 0,
-      }}
-      transition={{
-        duration: 0.45,
-        delay: index * 0.1,
-        ease: "easeOut",
-      }}
-    >
-      {/* Chunk number */}
-      <div className="chunk-number">
-        {String(index + 1).padStart(2, "0")}
-      </div>
-
-      {/* Detection bar */}
-      <div className="chunk-track">
-        <motion.div
-          className={`chunk-bar ${
-            isAI ? "chunk-ai" : "chunk-real"
-          }`}
-          initial={{
-            width: 0,
-          }}
-          animate={{
-            width: `${Math.max(score, 1)}%`,
-          }}
-          transition={{
-            duration: 0.9,
-            delay: index * 0.1 + 0.15,
-            ease: "easeOut",
-          }}
-        />
-      </div>
-
-      {/* Score */}
-      <motion.div
-        className="chunk-score"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{
-          delay: index * 0.1 + 0.5,
-          duration: 0.3,
-        }}
-      >
-        {score.toFixed(2)}%
-      </motion.div>
-
-      {/* Status */}
-      <motion.div
-        className={`chunk-status ${
-          isAI ? "status-ai" : "status-real"
-        }`}
-        initial={{
-          opacity: 0,
-          scale: 0.8,
-        }}
-        animate={{
-          opacity: 1,
-          scale: 1,
-        }}
-        transition={{
-          delay: index * 0.1 + 0.55,
-          duration: 0.3,
-        }}
-      >
-        {isAI ? "AI" : "REAL"}
-      </motion.div>
-    </motion.div>
-  );
-})}
-
-                </div>
-
-              </div>
-
-
-              {/* ==================================
-                  RESULT STATS
-              ================================== */}
-
-              <div className="result-stats">
-
-                <div className="result-stat">
-
-                  <div className="result-stat-value">
-                    {result.fake_chunks}/
-                    {result.total_chunks}
-                  </div>
-
-                  <div className="result-stat-label">
-                    AI CHUNKS
-                  </div>
-
-                </div>
-
-
-                <div className="result-stat">
-
-                  <div className="result-stat-value">
-                    {result.fake_chunk_percentage}%
-                  </div>
-
-                  <div className="result-stat-label">
-                    SUSPICIOUS CHUNKS
-                  </div>
-
-                </div>
-
-
-                <div className="result-stat">
-
-                  <div className="result-stat-value">
-                    {result.duration_seconds}s
-                  </div>
-
-                  <div className="result-stat-label">
-                    AUDIO DURATION
-                  </div>
-
-                </div>
-
-
-                <div className="result-stat">
-
-                  <div className="result-stat-value">
-                    {result.median_ai_score}%
-                  </div>
-
-                  <div className="result-stat-label">
-                    MEDIAN SCORE
-                  </div>
-
-                </div>
-
-              </div>
-
-
-              {/* ==================================
-                  ACTION
-              ================================== */}
-
-              <button
-                className="reset-button"
-                onClick={resetAnalysis}
-              >
-
-                <RotateCcw size={17} />
-
-                Analyze Another Recording
-
-              </button>
-
-            </motion.section>
-
-          )}
-
-        </AnimatePresence>
-
-        {/* ==========================================
-            TRANSACTION SECURITY CONTEXT
-        ========================================== */}
-
-{result?.transaction_context && (
-  <motion.div
-    className="transaction-card"
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.5 }}
-  >
-    <div className="transaction-header">
-
-      <div>
-        <span className="section-eyebrow">
-          SECURITY CONTEXT
-        </span>
-
-        <h3>Transaction Context</h3>
-      </div>
-
-      <span className="demo-badge">
-        DEMO
-      </span>
-
-    </div>
-
-
-    <div className="transaction-grid">
-
-      <div className="transaction-item">
-        <span>Caller</span>
-
-        <strong>
-          {result.transaction_context.caller_name ||
-            "Unknown Caller"}
-        </strong>
-      </div>
-
-
-      <div className="transaction-item">
-        <span>Requested Action</span>
-
-        <strong>
-          {result.transaction_context.transaction_type ||
-            "None"}
-        </strong>
-      </div>
-
-
-      <div className="transaction-item">
-        <span>Amount</span>
-
-        <strong>
-          ₹
-          {Number(
-            result.transaction_context.transaction_amount || 0
-          ).toLocaleString("en-IN")}
-        </strong>
-      </div>
-
-
-      <div className="transaction-item">
-        <span>Sensitivity</span>
-
-        <strong
-          className={
-            result.transaction_context
-              .transaction_sensitivity === "HIGH"
-              ? "risk-high"
-              : ""
+        <button
+          className="nav-launch"
+          onClick={() =>
+            document
+              .getElementById("console")
+              ?.scrollIntoView({
+                behavior: "smooth",
+              })
           }
         >
-          {result.transaction_context
-            .transaction_sensitivity || "LOW"}
-        </strong>
-      </div>
+          Launch Console
+          <ArrowRight size={15} />
+        </button>
+      </nav>
 
+      {/* ===================================================== */}
+      {/* ERROR */}
+      {/* ===================================================== */}
 
-      <div className="transaction-item">
-        <span>Caller Verification</span>
-
-        <strong
-          className={
-            result.transaction_context.caller_verified
-              ? "verification-good"
-              : "risk-high"
-          }
-        >
-          {result.transaction_context.caller_verified
-            ? "VERIFIED"
-            : "NOT VERIFIED"}
-        </strong>
-      </div>
-
-    </div>
-  </motion.div>
-)}
-        {/* ==========================================
-              SECURITY PREVENTION ENGINE
-          ========================================== */}
-
-        {result?.risk_level === "HIGH" && (
+      <AnimatePresence>
+        {error && (
           <motion.div
-            className="security-action-card"
+            className="error-banner"
             initial={{
               opacity: 0,
-              scale: 0.97
-            }}
-            animate={{
-              opacity: 1,
-              scale: 1
-            }}
-            transition={{
-              duration: 0.45
-            }}
-          >
-
-            <div className="security-alert-icon">
-              🚨
-            </div>
-
-
-            <div className="security-action-content">
-
-              <span className="section-eyebrow">
-                SECURITY RESPONSE
-              </span>
-
-              <h3>
-                Possible Voice Impersonation
-              </h3>
-
-              <p>
-                Voice authenticity signals and transaction
-                context indicate a high-risk interaction.
-              </p>
-
-
-              {/* Risk summary */}
-
-              <div className="security-risk-summary">
-
-                <div>
-                  <span>RISK SCORE</span>
-
-                  <strong>
-                    {result.risk_score}
-                  </strong>
-                </div>
-
-
-                <div>
-                  <span>RISK LEVEL</span>
-
-                  <strong className="risk-high">
-                    {result.risk_level}
-                  </strong>
-                </div>
-
-
-                <div>
-                  <span>RECOMMENDED ACTION</span>
-
-                  <strong>
-                    {result.recommended_action
-                      ?.replaceAll("_", " ")}
-                  </strong>
-                </div>
-
-              </div>
-
-
-              {/* Security actions */}
-
-              <div className="security-actions">
-
-                <button
-                  className="security-btn danger"
-                  onClick={() =>
-                    alert(
-                      "Transaction placed on security hold."
-                    )
-                  }
-                >
-                  HOLD TRANSACTION
-                </button>
-
-
-                <button
-                  className="security-btn"
-                  onClick={() =>
-                    alert(
-                      "Independent caller verification requested."
-                    )
-                  }
-                >
-                  VERIFY CALLER
-                </button>
-
-
-                <button
-                  className="security-btn"
-                  onClick={() =>
-                    alert(
-                      "MFA verification initiated."
-                    )
-                  }
-                >
-                  REQUEST MFA
-                </button>
-
-              </div>
-
-
-              <div className="security-note">
-                Prototype action layer — connected to the
-                VoiceShield-AI risk engine.
-              </div>
-
-            </div>
-
-          </motion.div>
-        )}
-
-
-        {/* ====================================
-            FEATURES
-        ==================================== */}
-
-        {!result && (
-
-          <motion.section
-            className="features"
-            initial={{
-              opacity: 0,
-              y: 25,
+              y: -15,
             }}
             animate={{
               opacity: 1,
               y: 0,
             }}
-            transition={{
-              duration: 0.7,
-              delay: 0.3,
+            exit={{
+              opacity: 0,
+              y: -15,
             }}
           >
+            <XCircle size={18} />
+            <span>{error}</span>
 
-            <div className="feature-card">
-
-              <div className="feature-icon">
-                <AudioWaveform size={21} />
-              </div>
-
-              <div>
-
-                <h3>
-                  Chunk-Level Analysis
-                </h3>
-
-                <p>
-                  Speech is analyzed in focused
-                  8-second segments for consistent
-                  detection.
-                </p>
-
-              </div>
-
-            </div>
-
-
-            <div className="feature-card">
-
-              <div className="feature-icon">
-                <ShieldCheck size={21} />
-              </div>
-
-              <div>
-
-                <h3>
-                  Deep Learning Detection
-                </h3>
-
-                <p>
-                  Wav2Vec2-based analysis identifies
-                  patterns associated with synthetic speech.
-                </p>
-
-              </div>
-
-            </div>
-
-
-            <div className="feature-card">
-
-              <div className="feature-icon">
-                <LockKeyhole size={21} />
-              </div>
-
-              <div>
-
-                <h3>
-                  Privacy First
-                </h3>
-
-                <p>
-                  Audio is processed by the VoiceShield-AI
-                  prototype backend for analysis.
-                </p>
-
-              </div>
-
-            </div>
-
-          </motion.section>
-
+            <button
+              onClick={() => setError("")}
+            >
+              ×
+            </button>
+          </motion.div>
         )}
+      </AnimatePresence>
 
-        {/* ====================================
-            FOOTER
-        ==================================== */}
+      {/* ===================================================== */}
+      {/* HERO */}
+      {/* ===================================================== */}
 
-        <footer>
+      <section
+        id="product"
+        className="hero-section"
+      >
+
+        <div className="hero-content">
+
+          <div className="eyebrow">
+            <Sparkles size={13} />
+            AI VOICE SECURITY
+          </div>
+
+          <h1>
+            Know the voice.
+            <br />
+            <em>Trust the conversation.</em>
+          </h1>
+
+          <p className="hero-description">
+            KWACH analyzes voice signals in real
+            time to identify possible AI
+            impersonation and trigger adaptive
+            security responses.
+          </p>
+
+          <div className="hero-actions">
+
+            <button
+              className="primary-button"
+              onClick={() =>
+                document
+                  .getElementById("console")
+                  ?.scrollIntoView({
+                    behavior: "smooth",
+                  })
+              }
+            >
+              Open Security Console
+              <ArrowRight size={17} />
+            </button>
+
+            <button
+              className="secondary-button"
+              onClick={startLiveAnalysis}
+            >
+              <Mic size={17} />
+              Try Live Analysis
+            </button>
+
+          </div>
+
+          <div className="hero-trust">
+
+            <span>
+              <CheckCircle2 size={14} />
+              Real-time analysis
+            </span>
+
+            <span>
+              <CheckCircle2 size={14} />
+              Chunk-level forensics
+            </span>
+
+            <span>
+              <CheckCircle2 size={14} />
+              Context-aware protection
+            </span>
+
+          </div>
+
+        </div>
+
+        {/* AI ORB */}
+
+        <motion.div
+          className="hero-orb-container"
+          animate={{
+            y: [0, -12, 0],
+          }}
+          transition={{
+            duration: 5,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+        >
+
+          <div className="orb-ring ring-one" />
+          <div className="orb-ring ring-two" />
+          <div className="orb-ring ring-three" />
+
+          <motion.div
+            className="ai-orb"
+            animate={{
+              scale: [
+                1,
+                1.04,
+                1,
+              ],
+            }}
+            transition={{
+              duration: 4,
+              repeat: Infinity,
+            }}
+          >
+            <div className="orb-core">
+              <ShieldCheck size={38} />
+            </div>
+          </motion.div>
+
+          <div className="orb-label">
+            <span>KWACH</span>
+            <small>
+              VOICE INTELLIGENCE ENGINE
+            </small>
+          </div>
+
+        </motion.div>
+
+      </section>
+
+      {/* ===================================================== */}
+      {/* FEATURE STRIP */}
+      {/* ===================================================== */}
+
+      <section
+        id="detection"
+        className="section"
+      >
+
+        <div className="section-heading">
+
+          <div className="eyebrow">
+            WHAT KWACH DOES
+          </div>
+
+          <h2>
+            Voice security,
+            <br />
+            built for real conversations.
+          </h2>
+
+        </div>
+
+        <div className="feature-grid">
+
+          <FeatureCard
+            icon={<Radio size={20} />}
+            title="Live Voice Guard"
+            text="Analyze microphone audio continuously while a conversation is happening."
+          />
+
+          <FeatureCard
+            icon={<ScanLine size={20} />}
+            title="Voice Forensics"
+            text="Break conversations into focused audio windows for consistent analysis."
+          />
+
+          <FeatureCard
+            icon={<ShieldAlert size={20} />}
+            title="Adaptive Protection"
+            text="Combine voice signals with security context to determine the appropriate response."
+          />
+
+        </div>
+
+      </section>
+
+      {/* ===================================================== */}
+      {/* LIVE SECURITY CONSOLE */}
+      {/* ===================================================== */}
+
+      <section
+        id="console"
+        className="console-section"
+      >
+
+        <div className="console-header">
+
+          <div>
+            <div className="eyebrow">
+              SECURITY CONSOLE
+            </div>
+
+            <h2>
+              Live Voice Guard
+            </h2>
+
+            <p>
+              Monitor voice authenticity as the
+              conversation unfolds.
+            </p>
+          </div>
+
+          <div className="online-pill">
+            <span />
+            SYSTEM ONLINE
+          </div>
+
+        </div>
+
+        <div className="console-grid">
+
+          {/* MAIN LIVE CARD */}
+
+          <div className="live-card">
+
+            <div className="live-card-top">
+
+              <div className="live-label">
+                <Activity size={15} />
+                REAL-TIME ANALYSIS
+              </div>
+
+              <div
+                className={
+                  liveMode
+                    ? "status-pill active"
+                    : "status-pill"
+                }
+              >
+                <span />
+                {liveMode
+                  ? "LISTENING"
+                  : "READY"}
+              </div>
+
+            </div>
+
+            <div className="console-orb-wrapper">
+
+              <motion.div
+                className={
+                  liveMode
+                    ? "console-orb listening"
+                    : "console-orb"
+                }
+                animate={
+                  liveMode
+                    ? {
+                        scale: [
+                          1,
+                          1.06,
+                          1,
+                        ],
+                      }
+                    : {}
+                }
+                transition={{
+                  duration: 2,
+                  repeat: Infinity,
+                }}
+              >
+
+                <div>
+                  {liveMode ? (
+                    <Mic size={32} />
+                  ) : (
+                    <ShieldCheck size={32} />
+                  )}
+                </div>
+
+              </motion.div>
+
+              <div className="orb-status">
+                {liveMode
+                  ? "LISTENING TO VOICE"
+                  : "READY FOR ANALYSIS"}
+              </div>
+
+            </div>
+
+            <div className="live-score">
+
+              <span>
+                VOICE AUTHENTICITY
+              </span>
+
+              <strong>
+                {currentResult
+                  ? `${Number(score).toFixed(2)}%`
+                  : "—"}
+              </strong>
+
+              <div className="score-line">
+                <motion.div
+                  animate={{
+                    width: `${Math.min(
+                      Number(score) || 0,
+                      100
+                    )}%`,
+                  }}
+                />
+              </div>
+
+              <div className="score-caption">
+                {status}
+              </div>
+
+            </div>
+
+            <div className="live-controls">
+
+              {!liveMode ? (
+                <button
+                  className="primary-button wide"
+                  onClick={
+                    startLiveAnalysis
+                  }
+                >
+                  <Mic size={17} />
+                  Start Live Analysis
+                </button>
+              ) : (
+                <button
+                  className="danger-button wide"
+                  onClick={
+                    stopLiveAnalysis
+                  }
+                >
+                  <MicOff size={17} />
+                  Stop Live Analysis
+                </button>
+              )}
+
+            </div>
+
+          </div>
+
+          {/* LIVE RESULT */}
+
+          <div className="result-card">
+
+            <div className="card-eyebrow">
+              CURRENT SECURITY STATE
+            </div>
+
+            <div
+              className={`state-icon ${riskClass}`}
+            >
+              {isHighRisk ? (
+                <ShieldAlert />
+              ) : isMediumRisk ? (
+                <AlertTriangle />
+              ) : (
+                <CheckCircle2 />
+              )}
+            </div>
+
+            <h3>
+              {currentResult
+                ? status
+                : "Waiting for voice"}
+            </h3>
+
+            <p>
+              {currentResult
+                ? isHighRisk
+                  ? "Possible AI voice impersonation detected."
+                  : isMediumRisk
+                  ? "Voice authenticity requires additional verification."
+                  : "Voice currently appears authentic."
+                : "Start live analysis or upload a recording to begin."}
+            </p>
+
+            <div className="result-metrics">
+
+              <Metric
+                label="AI SCORE"
+                value={
+                  currentResult
+                    ? `${Number(score).toFixed(2)}%`
+                    : "—"
+                }
+              />
+
+              <Metric
+                label="RISK"
+                value={
+                  currentResult
+                    ? riskLevel
+                    : "—"
+                }
+              />
+
+              <Metric
+                label="CHUNKS"
+                value={
+                  liveChunks.length ||
+                  analysis?.total_chunks ||
+                  "—"
+                }
+              />
+
+            </div>
+
+          </div>
+
+        </div>
+
+        {/* ================================================= */}
+        {/* LIVE FORENSICS */}
+        {/* ================================================= */}
+
+        <div className="forensics-card">
+
+          <div className="forensics-header">
+
+            <div>
+              <div className="eyebrow">
+                VOICE FORENSICS
+              </div>
+
+              <h3>
+                Voice Signal Timeline
+              </h3>
+            </div>
+
+            <div className="chunk-count">
+              {liveChunks.length} CHUNKS
+            </div>
+
+          </div>
+
+          {liveChunks.length === 0 ? (
+            <div className="empty-state">
+              <Activity size={22} />
+              <span>
+                Start live analysis to populate
+                the forensic timeline.
+              </span>
+            </div>
+          ) : (
+            <div className="chunk-list">
+
+              {liveChunks.map(
+                (chunk) => {
+
+                  const chunkAI =
+                    chunk.chunk_status ===
+                    "AI";
+
+                  const chunkSuspicious =
+                    chunk.chunk_status ===
+                    "SUSPICIOUS";
+
+                  return (
+                    <motion.div
+                      className="chunk-row"
+                      key={chunk.chunk_number}
+                      initial={{
+                        opacity: 0,
+                        y: 8,
+                      }}
+                      animate={{
+                        opacity: 1,
+                        y: 0,
+                      }}
+                    >
+
+                      <div className="chunk-number">
+                        {String(
+                          chunk.chunk_number
+                        ).padStart(2, "0")}
+                      </div>
+
+                      <div className="chunk-time">
+                        {chunk.timestamp}
+                      </div>
+
+                      <div className="chunk-bar">
+                        <motion.div
+                          className={
+                            chunkAI
+                              ? "ai"
+                              : chunkSuspicious
+                              ? "suspicious"
+                              : "real"
+                          }
+                          initial={{
+                            width: 0,
+                          }}
+                          animate={{
+                            width: `${Math.max(
+                              Number(
+                                chunk.chunk_score
+                              ),
+                              1
+                            )}%`,
+                          }}
+                        />
+                      </div>
+
+                      <strong>
+                        {chunk.chunk_score}%
+                      </strong>
+
+                      <span
+                        className={
+                          chunkAI
+                            ? "chunk-status ai"
+                            : chunkSuspicious
+                            ? "chunk-status suspicious"
+                            : "chunk-status real"
+                        }
+                      >
+                        {chunk.chunk_status}
+                      </span>
+
+                      <span className="chunk-risk">
+                        {chunk.risk_level}
+                      </span>
+
+                    </motion.div>
+                  );
+                }
+              )}
+
+            </div>
+          )}
+
+        </div>
+
+      </section>
+
+      {/* ===================================================== */}
+      {/* UPLOAD ANALYSIS */}
+      {/* ===================================================== */}
+
+      <section className="section upload-section">
+
+        <div className="section-heading centered">
+
+          <div className="eyebrow">
+            FORENSIC ANALYSIS
+          </div>
+
+          <h2>
+            Analyze a recording.
+          </h2>
+
+          <p>
+            Upload an audio file and let KWACH
+            perform chunk-level voice analysis.
+          </p>
+
+        </div>
+
+        <div className="upload-card">
+
+          <div className="upload-icon">
+            <Upload size={25} />
+          </div>
+
+          <h3>
+            {selectedFile
+              ? selectedFile.name
+              : "Choose an audio recording"}
+          </h3>
+
+          <p>
+            WAV, MP3 and browser-recorded
+            audio supported by the prototype.
+          </p>
+
+          <label className="file-button">
+            <Upload size={15} />
+            Select Audio
+
+            <input
+              type="file"
+              accept="audio/*"
+              onChange={(event) => {
+                const file =
+                  event.target.files?.[0];
+
+                setSelectedFile(file || null);
+                setError("");
+              }}
+            />
+          </label>
+
+          <button
+            className="primary-button"
+            disabled={
+              !selectedFile || loading
+            }
+            onClick={analyzeAudio}
+          >
+            {loading
+              ? "Analyzing..."
+              : "Analyze Recording"}
+
+            {!loading && (
+              <ArrowRight size={16} />
+            )}
+          </button>
+
+        </div>
+
+      </section>
+
+      {/* ===================================================== */}
+      {/* SECURITY CONTEXT */}
+      {/* ===================================================== */}
+
+      <section
+        id="protection"
+        className="section"
+      >
+
+        <div className="section-heading">
+
+          <div className="eyebrow">
+            SECURITY CONTEXT
+          </div>
+
+          <h2>
+            Detection becomes
+            <br />
+            protection.
+          </h2>
+
+          <p>
+            Voice authenticity is only one part of
+            the decision. KWACH combines the signal
+            with caller and transaction context.
+          </p>
+
+        </div>
+
+        <div className="context-grid">
+
+          <div className="context-card">
+
+            <div className="context-icon">
+              <UserCheck />
+            </div>
+
+            <span>
+              CALLER
+            </span>
+
+            <strong>
+              {callerName}
+            </strong>
+
+            <button
+              className={
+                callerVerified
+                  ? "verification verified"
+                  : "verification"
+              }
+              onClick={() =>
+                setCallerVerified(
+                  !callerVerified
+                )
+              }
+            >
+              {callerVerified
+                ? "✓ VERIFIED"
+                : "MARK VERIFIED"}
+            </button>
+
+          </div>
+
+          <div className="context-card">
+
+            <div className="context-icon">
+              <CircleDollarSign />
+            </div>
+
+            <span>
+              TRANSACTION
+            </span>
+
+            <strong>
+              {transactionType}
+            </strong>
+
+            <small>
+              ₹
+              {Number(
+                transactionAmount
+              ).toLocaleString("en-IN")}
+            </small>
+
+          </div>
+
+          <div className="context-card">
+
+            <div className="context-icon">
+              <ShieldAlert />
+            </div>
+
+            <span>
+              SENSITIVITY
+            </span>
+
+            <strong>
+              {transactionSensitivity}
+            </strong>
+
+            <small>
+              Transaction risk context
+            </small>
+
+          </div>
+
+        </div>
+
+      </section>
+
+      {/* ===================================================== */}
+      {/* PROTECTION RESPONSE */}
+      {/* ===================================================== */}
+
+      <section className="protection-section">
+
+        <div className="protection-content">
+
+          <div className="eyebrow">
+            ADAPTIVE SECURITY
+          </div>
+
+          <h2>
+            When the voice becomes
+            <br />
+            suspicious, KWACH responds.
+          </h2>
+
+          <p>
+            The prototype translates detection
+            signals into an adaptive security
+            response instead of simply displaying
+            a classification.
+          </p>
+
+          <div className="protection-actions">
+
+            <button
+              onClick={() =>
+                addAuditEvent(
+                  "TRANSACTION HOLD",
+                  "Demo security action activated",
+                  "danger"
+                )
+              }
+            >
+              <Ban size={16} />
+              Hold Transaction
+            </button>
+
+            <button
+              onClick={() =>
+                addAuditEvent(
+                  "CALLER VERIFICATION",
+                  "Additional verification requested",
+                  "warning"
+                )
+              }
+            >
+              <UserCheck size={16} />
+              Verify Caller
+            </button>
+
+            <button
+              onClick={() =>
+                addAuditEvent(
+                  "MFA REQUEST",
+                  "Additional authentication requested",
+                  "warning"
+                )
+              }
+            >
+              <KeyRound size={16} />
+              Request MFA
+            </button>
+
+          </div>
+
+        </div>
+
+        <div className="protection-visual">
+
+          <div className="protection-orb">
+            <ShieldAlert size={35} />
+          </div>
+
+          <div className="protection-line">
+            <span />
+            RISK FUSION
+            <span />
+          </div>
+
+          <div className="protection-flow">
+
+            <div>VOICE</div>
+            <ArrowRight />
+            <div>CONTEXT</div>
+            <ArrowRight />
+            <div>PROTECT</div>
+
+          </div>
+
+        </div>
+
+      </section>
+
+      {/* ===================================================== */}
+      {/* AUDIT TIMELINE */}
+      {/* ===================================================== */}
+
+      <section className="section">
+
+        <div className="section-heading">
+
+          <div className="eyebrow">
+            AUDIT TRAIL
+          </div>
+
+          <h2>
+            Every security decision,
+            <br />
+            visible.
+          </h2>
+
+        </div>
+
+        <div className="audit-card">
+
+          {auditEvents.length === 0 ? (
+            <div className="empty-audit">
+              <Clock3 size={20} />
+              Security events will appear here
+              during analysis.
+            </div>
+          ) : (
+            auditEvents
+              .slice()
+              .reverse()
+              .map((event) => (
+                <motion.div
+                  className="audit-row"
+                  key={event.id}
+                  initial={{
+                    opacity: 0,
+                    x: -10,
+                  }}
+                  animate={{
+                    opacity: 1,
+                    x: 0,
+                  }}
+                >
+
+                  <div
+                    className={`audit-dot ${event.type}`}
+                  />
+
+                  <div className="audit-time">
+                    {event.time}
+                  </div>
+
+                  <div>
+                    <strong>
+                      {event.title}
+                    </strong>
+
+                    <p>
+                      {event.description}
+                    </p>
+                  </div>
+
+                </motion.div>
+              ))
+          )}
+
+        </div>
+
+      </section>
+
+      {/* ===================================================== */}
+      {/* TECHNOLOGY */}
+      {/* ===================================================== */}
+
+      <section
+        id="technology"
+        className="technology-section"
+      >
+
+        <div className="section-heading centered">
+
+          <div className="eyebrow">
+            TECHNOLOGY
+          </div>
+
+          <h2>
+            Built for real-time
+            <br />
+            voice security.
+          </h2>
+
+        </div>
+
+        <div className="tech-grid">
+
+          <TechCard
+            title="Wav2Vec2"
+            text="Deep-learning speech representation used for voice authenticity analysis."
+          />
+
+          <TechCard
+            title="8-Second Forensics"
+            text="Continuous chunk-level analysis makes live monitoring practical."
+          />
+
+          <TechCard
+            title="Risk Fusion Engine"
+            text="Combines voice signals, transaction sensitivity and verification context."
+          />
+
+          <TechCard
+            title="FastAPI + React"
+            text="Real-time inference backend connected to an interactive security console."
+          />
+
+        </div>
+
+      </section>
+
+      {/* ===================================================== */}
+      {/* FOOTER */}
+      {/* ===================================================== */}
+
+      <footer className="kwach-footer">
+
+        <div className="brand">
+
+          <div className="brand-mark">
+            <ShieldCheck size={19} />
+          </div>
 
           <span>
-            VoiceShield-AI
+            KWACH
           </span>
 
-          <span>
-            AI Voice Deepfake Detection • Prototype
-          </span>
+        </div>
 
-        </footer>
+        <p>
+          Know the voice. Trust the conversation.
+        </p>
 
-      </main>
+        <span className="footer-note">
+          AI Voice Security Prototype
+        </span>
+
+      </footer>
 
     </div>
+  );
+}
+
+// ============================================================
+// COMPONENTS
+// ============================================================
+
+function FeatureCard({
+  icon,
+  title,
+  text,
+}) {
+  return (
+    <motion.div
+      className="feature-card"
+      whileHover={{
+        y: -5,
+      }}
+    >
+      <div className="feature-icon">
+        {icon}
+      </div>
+
+      <h3>
+        {title}
+      </h3>
+
+      <p>
+        {text}
+      </p>
+
+      <ArrowRight
+        className="feature-arrow"
+        size={17}
+      />
+    </motion.div>
+  );
+}
+
+function Metric({
+  label,
+  value,
+}) {
+  return (
+    <div className="metric">
+      <span>
+        {label}
+      </span>
+
+      <strong>
+        {value}
+      </strong>
+    </div>
+  );
+}
+
+function TechCard({
+  title,
+  text,
+}) {
+  return (
+    <motion.div
+      className="tech-card"
+      whileHover={{
+        y: -4,
+      }}
+    >
+      <div className="tech-dot" />
+
+      <h3>
+        {title}
+      </h3>
+
+      <p>
+        {text}
+      </p>
+    </motion.div>
   );
 }
 
